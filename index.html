@@ -416,6 +416,7 @@ function drawEditor(msg) {
   const known = new Set(prodNames());
   $('#box').innerHTML = `<h2><span>${draft.id ? '修改貨單' : '新增貨單'}</span><button class="btn sm" id="x">✕</button></h2>
     ${draft.id ? '' : `<div class="photo"><button class="btn pri" id="snap">📷 拍照</button><button class="btn pri" id="album">🖼 從相簿選（可多張）</button>
+      ${curJob && draft.err ? '<button class="btn" id="retry">🔄 重新辨識</button>' : ''}
       ${curJob && curJob.total > 1 ? `<span class="batch">第 ${curJob.idx} / ${curJob.total} 張</span>` : ''}
       <span class="t" id="snapMsg">${msg || draft.msg || (hasGemini ? '選好照片後會自動填入，請再核對一次' : '尚未設定辨識金鑰，暫時只能手動輸入')}</span></div>
       ${curJob ? `<div class="pv" id="pv"><img src="${curJob.url}" alt="貨單照片"></div>` : ''}`}
@@ -435,6 +436,7 @@ function drawEditor(msg) {
   sumUp();
   $('#x').onclick = $('#cancel').onclick = () => { jobs = []; curJob = null; closeDlg(); };
   if ($('#skip')) $('#skip').onclick = nextJob;
+  if ($('#retry')) $('#retry').onclick = retryJob;
   if ($('#pv')) $('#pv').onclick = () => $('#pv').classList.toggle('big');
   $('#eDate').onchange = e => draft.date = e.target.value;
   $('#eCust').oninput = e => draft.customer = e.target.value;
@@ -479,24 +481,36 @@ function startJobs(fileList) {
   const total = files.length;
   jobs = files.map((file, i) => {
     const j = {file, url: URL.createObjectURL(file), idx: i + 1, total, t0: Date.now()};
-    j.p = (async () => {
-      await new Promise(r => setTimeout(r, Math.floor(i / 3) * 1500));    // 三張一批送出，避免超過免費額度的速率
-      j.t0 = Date.now();
-      const b64 = await shrink(file, 1280);
-      return api({action: 'recognize', image: b64, mime: 'image/jpeg'});
-    })();
-    j.p.catch(() => {});
+    j.p = recognizeFile(j, Math.floor(i / 3) * 1500);    // 三張一批送出，避免超過免費額度的速率
     return j;
   });
   nextJob();
 }
 
+function recognizeFile(j, wait) {
+  const p = (async () => {
+    if (wait) await new Promise(r => setTimeout(r, wait));
+    j.t0 = Date.now();
+    const b64 = await shrink(j.file, 1280);
+    return api({action: 'recognize', image: b64, mime: 'image/jpeg'});
+  })();
+  p.catch(() => {});
+  return p;
+}
 function nextJob() {
   clearInterval(tick);
   curJob = jobs.shift();
   if (!curJob) return;
-  const job = curJob;
   draft = {id: '', date: today(), customer: '', note: '', lines: [{product: '', qty: ''}], msg: '辨識中…'};
+  runJob(curJob);
+}
+function retryJob() {
+  const job = curJob; if (!job) return;
+  job.t0 = Date.now(); job.p = recognizeFile(job, 0);
+  draft.err = false; draft.msg = '辨識中…';
+  runJob(job);
+}
+function runJob(job) {
   drawEditor();
   const show = () => { if (curJob === job && $('#snapMsg')) $('#snapMsg').textContent = `辨識中… ${Math.max(0, Math.round((Date.now() - job.t0) / 1000))} 秒`; };
   show(); tick = setInterval(show, 1000);
@@ -508,12 +522,13 @@ function nextJob() {
     const got = r.items.map(i => ({product: i.product, qty: i.qty || '', raw: i.raw}));
     draft.lines = got.concat([{product: '', qty: ''}]);
     const miss = got.filter(l => !l.product).length;
+    draft.err = false;
     draft.msg = `✅ 辨識到 ${got.length} 項（${Math.round((Date.now() - job.t0) / 1000)} 秒）${miss ? `，有 ${miss} 項對不到商品（黃色），請補上` : ''}。請對照照片核對後儲存`;
     drawEditor();
   }).catch(err => {
     if (curJob !== job) return;
     clearInterval(tick);
-    draft.msg = '❌ ' + err.message + '（可以對照照片手動輸入）';
+    draft.msg = '❌ ' + err.message + '（可以按「重新辨識」，或對照照片手動輸入）'; draft.err = true;
     drawEditor();
   });
 }
