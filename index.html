@@ -67,7 +67,10 @@ tr.click:hover td{background:var(--soft)}
 .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
 .acts .left{margin-right:auto}
 .photo{border:2px dashed #fdba74;background:var(--soft);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.photo .t{font-size:13px;color:#9a3412}
+.photo .t{font-size:13px;color:#9a3412;flex-basis:100%}
+.pv{margin:0 0 12px}.pv img{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block}
+.pv.big img{max-height:none;cursor:zoom-out}
+.batch{font-size:12.5px;color:var(--brand2);font-weight:700}
 .note{font-size:12.5px;color:var(--mute);margin:8px 0 0}
 .login{position:fixed;inset:0;background:var(--brand);display:flex;align-items:center;justify-content:center;z-index:50}
 .login form{background:#fff;border-radius:14px;padding:28px 30px;width:320px;text-align:center}
@@ -122,7 +125,8 @@ tr.click:hover td{background:var(--soft)}
 
 <div class="dlg" id="dlg" hidden><div class="box" id="box"></div></div>
 <div id="print"></div>
-<input type="file" id="file" accept="image/*" capture="environment" hidden>
+<input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
+<input type="file" id="fileAlb" accept="image/*" multiple hidden>
 
 <script>
 /* ★ 把出貨單 Apps Script 部署後的網址貼在這裡 ★ */
@@ -404,13 +408,17 @@ function openEditor(o) {
   draft = o ? {id: o.id, date: o.date, customer: o.customer, note: o.note || '', lines: o.lines.map(l => ({...l}))}
             : {id: '', date: today(), customer: '', note: '', lines: []};
   while (draft.lines.length < 5) draft.lines.push({product: '', qty: ''});
+  jobs = []; curJob = null;
   drawEditor();
 }
 function drawEditor(msg) {
   editing = true;
   const known = new Set(prodNames());
   $('#box').innerHTML = `<h2><span>${draft.id ? '修改貨單' : '新增貨單'}</span><button class="btn sm" id="x">✕</button></h2>
-    ${draft.id ? '' : `<div class="photo"><button class="btn pri" id="snap">📷 拍照辨識手寫單</button><span class="t" id="snapMsg">${msg || (hasGemini ? '拍好後會自動填入，請再核對一次' : '尚未設定辨識金鑰，暫時只能手動輸入')}</span></div>`}
+    ${draft.id ? '' : `<div class="photo"><button class="btn pri" id="snap">📷 拍照</button><button class="btn pri" id="album">🖼 從相簿選（可多張）</button>
+      ${curJob && curJob.total > 1 ? `<span class="batch">第 ${curJob.idx} / ${curJob.total} 張</span>` : ''}
+      <span class="t" id="snapMsg">${msg || draft.msg || (hasGemini ? '選好照片後會自動填入，請再核對一次' : '尚未設定辨識金鑰，暫時只能手動輸入')}</span></div>
+      ${curJob ? `<div class="pv" id="pv"><img src="${curJob.url}" alt="貨單照片"></div>` : ''}`}
     <div class="grid2"><label class="fld">日期<input type="date" id="eDate" value="${draft.date}"></label>
       <label class="fld">客戶<input id="eCust" list="dlC" value="${esc(draft.customer)}" placeholder="客戶名稱" autocomplete="off"></label></div>
     ${dl('dlC', customers())}${dl('dlP2', [...known])}
@@ -421,11 +429,13 @@ function drawEditor(msg) {
       <td><button class="btn sm" data-rm="${i}" tabindex="-1">✕</button></td></tr>`).join('')}</tbody></table>
     <button class="btn sm" id="addL" style="margin-top:6px">＋ 加一行</button>
     <label class="fld" style="margin-top:10px">備註<input id="eNote" value="${esc(draft.note)}"></label>
-    <div class="acts"><span class="sum left" id="eSum"></span><button class="btn" id="cancel">取消</button><button class="btn pri" id="save">儲存</button></div>`;
+    <div class="acts"><span class="sum left" id="eSum"></span>${curJob && jobs.length ? `<button class="btn" id="skip">跳過這張</button>` : ''}<button class="btn" id="cancel">${curJob && jobs.length ? '全部取消' : '取消'}</button><button class="btn pri" id="save">儲存</button></div>`;
   $('#dlg').hidden = false;
   const sumUp = () => { $('#eSum').textContent = `共 ${draft.lines.filter(l => l.product && +l.qty).length} 項・${draft.lines.reduce((s, l) => s + (+l.qty || 0), 0)} 箱`; };
   sumUp();
-  $('#x').onclick = $('#cancel').onclick = closeDlg;
+  $('#x').onclick = $('#cancel').onclick = () => { jobs = []; curJob = null; closeDlg(); };
+  if ($('#skip')) $('#skip').onclick = nextJob;
+  if ($('#pv')) $('#pv').onclick = () => $('#pv').classList.toggle('big');
   $('#eDate').onchange = e => draft.date = e.target.value;
   $('#eCust').oninput = e => draft.customer = e.target.value;
   $('#eNote').oninput = e => draft.note = e.target.value;
@@ -436,7 +446,8 @@ function drawEditor(msg) {
   });
   document.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { draft.lines.splice(+b.dataset.rm, 1); drawEditor(); });
   $('#addL').onclick = () => { draft.lines.push({product: '', qty: ''}); drawEditor(); const ps = document.querySelectorAll('.lines input.p'); ps[ps.length - 1].focus(); };
-  if ($('#snap')) $('#snap').onclick = () => { if (!hasGemini) return alert('還沒設定 GEMINI_KEY，請先在 Apps Script 的指令碼屬性加入金鑰'); $('#file').value = ''; $('#file').click(); };
+  const pick = id => () => { if (!hasGemini) return alert('還沒設定 GEMINI_KEY，請先在 Apps Script 的指令碼屬性加入金鑰'); $(id).value = ''; $(id).click(); };
+  if ($('#snap')) { $('#snap').onclick = pick('#fileCam'); $('#album').onclick = pick('#fileAlb'); }
   $('#save').onclick = async () => {
     const lines = draft.lines.filter(l => String(l.product).trim() && +l.qty > 0).map(l => ({product: String(l.product).trim(), qty: +l.qty}));
     if (!draft.customer.trim()) return alert('請填客戶');
@@ -448,29 +459,64 @@ function drawEditor(msg) {
       const d = await api({action:'saveOrder', order:{id: draft.id, date: draft.date, customer: draft.customer.trim(), note: draft.note, lines}});
       orders = orders.filter(x => x.id !== d.order.id); orders.push(d.order);
       orders.sort((a, b) => (b.date + b.created).localeCompare(a.date + a.created));
-      closeDlg(); render(); load().catch(() => {});
+      render();
+      if (jobs.length) nextJob(); else { curJob = null; closeDlg(); load().catch(() => {}); }
     } catch (e) { alert('儲存失敗：' + e.message); $('#save').disabled = false; $('#save').textContent = '儲存'; }
   };
 }
 
-/* ---------- 拍照辨識 ---------- */
-$('#file').onchange = async e => {
-  const f = e.target.files[0]; if (!f) return;
-  $('#snapMsg').textContent = '辨識中，大約 5～15 秒…'; $('#snap').disabled = true;
-  try {
-    const b64 = await shrink(f, 1600);
-    const r = await api({action:'recognize', image: b64, mime: 'image/jpeg'});
-    if (r.customer && !draft.customer) draft.customer = r.customer;
+/* ---------- 拍照 / 相簿辨識 ----------
+ * 選好的照片會「同時」送去辨識，第一張辨識完就可以先核對；
+ * 存好一張後自動跳下一張，後面的通常已經辨識好了。 */
+let jobs = [], curJob = null, tick = null;
+$('#fileCam').onchange = e => startJobs(e.target.files);
+$('#fileAlb').onchange = e => startJobs(e.target.files);
+
+function startJobs(fileList) {
+  const files = [...fileList].filter(f => f.type.startsWith('image/') || /\.(heic|jpe?g|png)$/i.test(f.name));
+  if (!files.length) return;
+  if (files.length > 20 && !confirm(`一次選了 ${files.length} 張，辨識需要一點時間，要繼續嗎？`)) return;
+  const total = files.length;
+  jobs = files.map((file, i) => {
+    const j = {file, url: URL.createObjectURL(file), idx: i + 1, total, t0: Date.now()};
+    j.p = (async () => {
+      await new Promise(r => setTimeout(r, Math.floor(i / 3) * 1500));    // 三張一批送出，避免超過免費額度的速率
+      j.t0 = Date.now();
+      const b64 = await shrink(file, 1280);
+      return api({action: 'recognize', image: b64, mime: 'image/jpeg'});
+    })();
+    j.p.catch(() => {});
+    return j;
+  });
+  nextJob();
+}
+
+function nextJob() {
+  clearInterval(tick);
+  curJob = jobs.shift();
+  if (!curJob) return;
+  const job = curJob;
+  draft = {id: '', date: today(), customer: '', note: '', lines: [{product: '', qty: ''}], msg: '辨識中…'};
+  drawEditor();
+  const show = () => { if (curJob === job && $('#snapMsg')) $('#snapMsg').textContent = `辨識中… ${Math.max(0, Math.round((Date.now() - job.t0) / 1000))} 秒`; };
+  show(); tick = setInterval(show, 1000);
+  job.p.then(r => {
+    if (curJob !== job) return;
+    clearInterval(tick);
+    if (r.customer) draft.customer = r.customer;
     if (r.date) draft.date = r.date;
     const got = r.items.map(i => ({product: i.product, qty: i.qty || '', raw: i.raw}));
-    draft.lines = got.concat(draft.lines.filter(l => l.product || l.qty));
-    while (draft.lines.length < got.length + 1) draft.lines.push({product: '', qty: ''});
+    draft.lines = got.concat([{product: '', qty: ''}]);
     const miss = got.filter(l => !l.product).length;
-    drawEditor(`✅ 辨識到 ${got.length} 項${miss ? `，有 ${miss} 項對不到商品（黃色），請補上` : ''}。請核對數量後再儲存`);
-  } catch (err) {
-    drawEditor('❌ ' + err.message);
-  }
-};
+    draft.msg = `✅ 辨識到 ${got.length} 項（${Math.round((Date.now() - job.t0) / 1000)} 秒）${miss ? `，有 ${miss} 項對不到商品（黃色），請補上` : ''}。請對照照片核對後儲存`;
+    drawEditor();
+  }).catch(err => {
+    if (curJob !== job) return;
+    clearInterval(tick);
+    draft.msg = '❌ ' + err.message + '（可以對照照片手動輸入）';
+    drawEditor();
+  });
+}
 function shrink(file, max) {
   return new Promise((ok, bad) => {
     const img = new Image();
