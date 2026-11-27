@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>出貨單管理</title>
+<style>
+:root{--bg:#f3f5f9;--card:#fff;--ink:#1f2937;--mute:#6b7280;--line:#e5e7eb;--brand:#7c2d12;--brand2:#c2410c;--soft:#fff7ed;--warn:#fef3c7;--red:#dc2626;--green:#15803d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Microsoft JhengHei","Noto Sans TC",sans-serif;font-size:14px}
+button,input,select,textarea{font-family:inherit;font-size:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+.top{background:var(--brand);color:#fff;padding:9px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.top h1{margin:0;font-size:16px;letter-spacing:1px}
+.top .sync{margin-left:auto;font-size:12px;opacity:.85}
+.top .g{background:rgba(255,255,255,.16);color:#fff;border:0;border-radius:7px;padding:6px 11px;font-size:13px}
+.top .g.main{background:#fff;color:var(--brand);font-weight:700}
+.tabs{display:flex;gap:4px;padding:10px 18px 0;overflow-x:auto;border-bottom:1px solid var(--line);background:#fff}
+.tab{border:0;background:none;padding:9px 14px;border-bottom:3px solid transparent;color:var(--mute);font-size:14px;white-space:nowrap}
+.tab.on{color:var(--brand2);border-color:var(--brand2);font-weight:700}
+.wrap{max-width:1200px;margin:0 auto;padding:14px 18px 60px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.bar label{font-size:12.5px;color:var(--mute);display:flex;align-items:center;gap:5px}
+input,select,textarea{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:#fff;color:var(--ink)}
+input[type=search]{min-width:180px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 13px}
+.btn:hover{background:#f9fafb}
+.btn.pri{background:var(--brand2);border-color:var(--brand2);color:#fff}
+.btn.danger{color:var(--red)}
+.btn.sm{padding:4px 9px;font-size:12.5px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card h3{margin:0;padding:11px 14px;font-size:14.5px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card h3 small{color:var(--mute);font-weight:400}
+table{border-collapse:collapse;width:100%}
+th,td{padding:8px 12px;border-bottom:1px solid #f1f2f4;text-align:left;vertical-align:top}
+th{background:#fafafa;font-size:12.5px;color:var(--mute);font-weight:600;position:sticky;top:0}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--soft)}
+.sum{color:var(--mute);font-size:12.5px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{background:#f3f4f6;border-radius:6px;padding:2px 7px;font-size:12.5px;white-space:nowrap}
+.chip b{color:var(--brand2)}
+.split{display:grid;grid-template-columns:280px 1fr;gap:14px;align-items:start}
+.list{max-height:70vh;overflow:auto}
+.list .it{display:flex;justify-content:space-between;gap:8px;padding:9px 14px;border-bottom:1px solid #f1f2f4;cursor:pointer}
+.list .it:hover{background:var(--soft)}
+.list .it.on{background:var(--soft);border-left:3px solid var(--brand2)}
+.list .it small{color:var(--mute)}
+.empty{color:var(--mute);text-align:center;padding:30px}
+.kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 14px;min-width:120px}
+.kpi .k{font-size:12px;color:var(--mute)}.kpi .v{font-size:22px;font-weight:700}
+/* 對話框 */
+.dlg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-start;justify-content:center;z-index:30;padding:20px 12px;overflow:auto}
+.box{background:#fff;border-radius:14px;width:100%;max-width:640px;padding:18px}
+.box h2{margin:0 0 12px;font-size:17px;display:flex;justify-content:space-between;align-items:center}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fld{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--mute)}
+.fld input,.fld textarea{font-size:15px;color:var(--ink)}
+.lines td{padding:5px 4px;border:0}
+.lines input{width:100%}
+.lines .q{width:90px}
+.lines tr.unk input.p{background:var(--warn)}
+.lines .raw{font-size:11.5px;color:#92400e;padding:2px 2px 0}
+.acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+.acts .left{margin-right:auto}
+.photo{border:2px dashed #fdba74;background:var(--soft);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.photo .t{font-size:13px;color:#9a3412}
+.note{font-size:12.5px;color:var(--mute);margin:8px 0 0}
+.login{position:fixed;inset:0;background:var(--brand);display:flex;align-items:center;justify-content:center;z-index:50}
+.login form{background:#fff;border-radius:14px;padding:28px 30px;width:320px;text-align:center}
+.login input{width:100%;font-size:16px;padding:11px;margin:12px 0}
+.login .btn{width:100%;padding:11px}
+.msg{color:var(--red);font-size:13px;min-height:18px;margin-top:8px}
+#print{display:none}
+@media print{
+  body>*:not(#print){display:none!important}
+  #print{display:block;font-size:16px;padding:10px}
+  #print table{border:1px solid #000}#print th,#print td{border:1px solid #000;padding:8px 10px}
+}
+@media (max-width:760px){
+  .split{grid-template-columns:1fr}.list{max-height:40vh}
+  .wrap{padding:10px 10px 60px}
+  .grid2{grid-template-columns:1fr 1fr}
+  th,td{padding:7px 8px}
+  .hide-m{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="login" id="login">
+  <form id="loginForm">
+    <h2 style="margin:0">📦 出貨單管理</h2>
+    <input type="password" id="pw" placeholder="密碼" autocomplete="current-password">
+    <button class="btn pri" type="submit">登入</button>
+    <div class="msg" id="loginMsg"></div>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <div class="top">
+    <h1>📦 出貨單管理</h1>
+    <button class="g main" id="btnNew">＋ 新增貨單</button>
+    <span class="sync" id="sync"></span>
+    <button class="g" id="btnSync">同步</button>
+    <button class="g" id="btnPw">改密碼</button>
+    <button class="g" id="btnOut">登出</button>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-v="all">總單</button>
+    <button class="tab" data-v="cust">客戶</button>
+    <button class="tab" data-v="date">日期</button>
+    <button class="tab" data-v="prod">貨品查詢</button>
+    <button class="tab" data-v="stat">區間統計</button>
+    <button class="tab" data-v="list">商品清單</button>
+  </nav>
+  <main class="wrap" id="view"></main>
+</div>
+
+<div class="dlg" id="dlg" hidden><div class="box" id="box"></div></div>
+<div id="print"></div>
+<input type="file" id="file" accept="image/*" capture="environment" hidden>
+
+<script>
+/* ★ 把出貨單 Apps Script 部署後的網址貼在這裡 ★ */
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyYIW-3e06kwDB8HU6sFK58iNLfevCjqm5Cmsndkksgt4IXc-QSEtQvlPMLendzDQCZcw/exec';
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const today = () => ymd(new Date());
+const daysAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return ymd(d); };
+const md = s => s ? `${+s.slice(5,7)}/${+s.slice(8)}` : '';
+const fmt = n => Number(n).toLocaleString('en-US');
+const total = o => o.lines.reduce((s, l) => s + l.qty, 0);
+const byNum = (a, b) => b - a;
+
+let key = localStorage.getItem('so_key') || '';
+let orders = [], products = [], hasGemini = false, view = 'all', ui = {};
+
+/* ---------- API ---------- */
+async function api(body) {
+  const r = await fetch(SCRIPT_URL, {method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify({key, ...body})});
+  const d = await r.json();
+  if (d.error === 'unauthorized') { logout('密碼錯誤或已更換'); throw new Error('unauthorized'); }
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+async function load() {
+  if (SCRIPT_URL === 'YOUR_WEB_APP_URL') throw new Error('尚未設定 SCRIPT_URL');
+  $('#sync').textContent = '同步中…';
+  const r = await fetch(SCRIPT_URL + '?key=' + encodeURIComponent(key));
+  const d = await r.json();
+  if (d.error === 'unauthorized') { logout('密碼錯誤或已更換'); throw new Error('unauthorized'); }
+  if (d.error) throw new Error(d.error);
+  orders = d.orders; products = d.products; hasGemini = d.hasGemini;
+  $('#login').hidden = true; $('#app').hidden = false;
+  $('#sync').textContent = '已同步 ' + new Date().toLocaleTimeString('zh-TW', {hour12:false});
+  render();
+}
+setInterval(() => { if (key && $('#dlg').hidden && !document.hidden && !busyTyping()) load().catch(() => {}); }, 30000);
+const busyTyping = () => document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) && !$('#app').hidden && document.activeElement.closest('#view');
+$('#btnSync').onclick = () => load().catch(e => alert(e.message));
+
+/* ---------- 登入 ---------- */
+$('#loginForm').onsubmit = async e => {
+  e.preventDefault(); key = $('#pw').value; $('#loginMsg').textContent = '驗證中…';
+  try { await load(); localStorage.setItem('so_key', key); $('#loginMsg').textContent = ''; }
+  catch (err) { if (err.message !== 'unauthorized') $('#loginMsg').textContent = '連線失敗：' + err.message; }
+};
+function logout(msg) { localStorage.removeItem('so_key'); key = ''; $('#login').hidden = false; $('#app').hidden = true; $('#loginMsg').textContent = msg || ''; $('#pw').value = ''; }
+$('#btnOut').onclick = () => logout();
+$('#btnPw').onclick = async () => {
+  const a = prompt('新密碼（至少 4 個字）：'); if (!a) return;
+  if (a.length < 4) return alert('至少 4 個字');
+  if (prompt('再輸入一次：') !== a) return alert('兩次不一樣，沒有修改');
+  try { await api({action:'changePassword', newPassword:a}); key = a; localStorage.setItem('so_key', a); alert('已修改，員工下次要用新密碼登入'); } catch (e) { alert(e.message); }
+};
+
+/* ---------- 分頁 ---------- */
+$('#tabs').onclick = e => { const v = e.target.dataset.v; if (!v) return; view = v; document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.v === v)); render(); };
+$('#btnNew').onclick = () => openEditor();
+
+function render() {
+  const keepFocus = document.activeElement && document.activeElement.id;
+  ({all: vAll, cust: vCust, date: vDate, prod: vProd, stat: vStat, list: vList})[view]();
+  if (keepFocus && $('#' + keepFocus)) { const el = $('#' + keepFocus); el.focus(); if (el.setSelectionRange && el.type !== 'date') el.setSelectionRange(el.value.length, el.value.length); }
+}
+const customers = () => [...new Set(orders.map(o => o.customer))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+const prodNames = () => { const s = new Set(products.map(p => p.name)); orders.forEach(o => o.lines.forEach(l => s.add(l.product))); return [...s]; };
+const dl = (id, arr) => `<datalist id="${id}">${arr.map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
+const rangeBar = (k, def) => {
+  ui[k] = ui[k] || def;
+  return `<label>從 <input type="date" id="${k}From" value="${ui[k].from}"></label><label>到 <input type="date" id="${k}To" value="${ui[k].to}"></label>
+    <button class="btn sm" data-q="${k}:7">近 7 天</button><button class="btn sm" data-q="${k}:30">近 30 天</button><button class="btn sm" data-q="${k}:m">本月</button><button class="btn sm" data-q="${k}:all">全部</button>`;
+};
+function bindRange(k) {
+  const f = $('#' + k + 'From'), t = $('#' + k + 'To');
+  f.onchange = () => { ui[k].from = f.value; render(); };
+  t.onchange = () => { ui[k].to = t.value; render(); };
+  document.querySelectorAll(`[data-q^="${k}:"]`).forEach(b => b.onclick = () => {
+    const q = b.dataset.q.split(':')[1];
+    if (q === 'all') ui[k] = {from:'', to:''};
+    else if (q === 'm') ui[k] = {from: today().slice(0, 8) + '01', to: today()};
+    else ui[k] = {from: daysAgo(+q - 1), to: today()};
+    render();
+  });
+}
+const inRange = (o, r) => (!r.from || o.date >= r.from) && (!r.to || o.date <= r.to);
+const chips = o => `<div class="chips">${o.lines.map(l => `<span class="chip">${esc(l.product)} <b>${l.qty}</b></span>`).join('')}</div>`;
+function orderTable(list, opt = {}) {
+  if (!list.length) return '<div class="empty">沒有符合的貨單</div>';
+  return `<table><thead><tr><th>日期</th>${opt.noCust ? '' : '<th>客戶</th>'}<th>品項</th><th class="n">箱數</th></tr></thead><tbody>
+    ${list.map(o => `<tr class="click" data-o="${o.id}"><td style="white-space:nowrap">${md(o.date)}</td>${opt.noCust ? '' : `<td style="white-space:nowrap"><b>${esc(o.customer)}</b></td>`}
+      <td>${chips(o)}${o.note ? `<div class="sum">📝 ${esc(o.note)}</div>` : ''}</td><td class="n"><b>${total(o)}</b></td></tr>`).join('')}</tbody></table>`;
+}
+function bindRows() { document.querySelectorAll('[data-o]').forEach(tr => tr.onclick = () => openOrder(tr.dataset.o)); }
+
+/* ---------- 總單 ---------- */
+function vAll() {
+  ui.allQ = ui.allQ ?? '';
+  const r = ui.all || {from:'', to:''};
+  const q = ui.allQ.trim();
+  const list = orders.filter(o => inRange(o, r) && (!q || o.customer.includes(q) || o.lines.some(l => l.product.includes(q)) || o.note.includes(q)));
+  $('#view').innerHTML = `<div class="bar"><input type="search" id="allQ" placeholder="搜尋客戶、品名、備註…" value="${esc(ui.allQ)}">${rangeBar('all', {from:'', to:''})}</div>
+    <div class="kpis"><div class="kpi"><div class="k">貨單數</div><div class="v">${list.length}</div></div>
+    <div class="kpi"><div class="k">總箱數</div><div class="v">${fmt(list.reduce((s, o) => s + total(o), 0))}</div></div>
+    <div class="kpi"><div class="k">客戶數</div><div class="v">${new Set(list.map(o => o.customer)).size}</div></div></div>
+    <div class="card">${orderTable(list)}</div>`;
+  $('#allQ').oninput = e => { ui.allQ = e.target.value; render(); };
+  bindRange('all'); bindRows();
+}
+
+/* ---------- 客戶 ---------- */
+function vCust() {
+  ui.custQ = ui.custQ ?? '';
+  const cs = customers().filter(c => c.includes(ui.custQ.trim()))
+    .map(c => { const os = orders.filter(o => o.customer === c); return {c, n: os.length, last: os[0]?.date || ''}; })
+    .sort((a, b) => b.last.localeCompare(a.last));
+  if (!ui.cust || !customers().includes(ui.cust)) ui.cust = cs[0]?.c;
+  const r = ui.cr || {from:'', to:''};
+  const os = orders.filter(o => o.customer === ui.cust && inRange(o, r));
+  const agg = {}; os.forEach(o => o.lines.forEach(l => agg[l.product] = (agg[l.product] || 0) + l.qty));
+  const rows = Object.entries(agg).sort((a, b) => b[1] - a[1]);
+  $('#view').innerHTML = `<div class="split">
+    <div class="card"><h3><input type="search" id="custQ" placeholder="找客戶…" value="${esc(ui.custQ)}" style="width:100%"></h3>
+      <div class="list">${cs.map(x => `<div class="it ${x.c === ui.cust ? 'on' : ''}" data-c="${esc(x.c)}"><b>${esc(x.c)}</b><small>${x.n} 張・${md(x.last)}</small></div>`).join('') || '<div class="empty">還沒有客戶</div>'}</div></div>
+    <div>${ui.cust ? `<div class="bar"><b style="font-size:17px">${esc(ui.cust)}</b>${rangeBar('cr', {from:'', to:''})}</div>
+      <div class="card" style="margin-bottom:12px"><h3>品項合計 <small>${os.length} 張單・共 ${fmt(rows.reduce((s, x) => s + x[1], 0))} 箱</small></h3>
+        ${rows.length ? `<table><tbody>${rows.map(([p, q]) => `<tr><td>${esc(p)}</td><td class="n"><b>${fmt(q)}</b> 箱</td></tr>`).join('')}</tbody></table>` : '<div class="empty">這段期間沒有出貨</div>'}</div>
+      <div class="card"><h3>貨單</h3>${orderTable(os, {noCust:true})}</div>` : ''}</div></div>`;
+  $('#custQ').oninput = e => { ui.custQ = e.target.value; render(); };
+  document.querySelectorAll('[data-c]').forEach(el => el.onclick = () => { ui.cust = el.dataset.c; render(); });
+  if (ui.cust) bindRange('cr');
+  bindRows();
+}
+
+/* ---------- 日期 ---------- */
+function vDate() {
+  const dates = [...new Set(orders.map(o => o.date))].sort().reverse();
+  if (!ui.day) ui.day = dates[0];
+  const os = orders.filter(o => o.date === ui.day);
+  const agg = {}; os.forEach(o => o.lines.forEach(l => agg[l.product] = (agg[l.product] || 0) + l.qty));
+  const rows = Object.entries(agg).sort((a, b) => b[1] - a[1]);
+  $('#view').innerHTML = `<div class="split">
+    <div class="card"><h3><span>日期</span><input type="date" id="dayPick" value="${ui.day || ''}"></h3>
+      <div class="list">${dates.map(d => { const x = orders.filter(o => o.date === d); return `<div class="it ${d === ui.day ? 'on' : ''}" data-d="${d}"><b>${d.slice(5).replace('-', '/')}（${'日一二三四五六'[new Date(d + 'T12:00').getDay()]}）</b><small>${x.length} 張・${fmt(x.reduce((s, o) => s + total(o), 0))} 箱</small></div>`; }).join('') || '<div class="empty">還沒有貨單</div>'}</div></div>
+    <div>${ui.day ? `<div class="card" style="margin-bottom:12px"><h3>${md(ui.day)} 撿貨總表 <small>${os.length} 張單・共 ${fmt(rows.reduce((s, x) => s + x[1], 0))} 箱</small>
+        ${rows.length ? '<button class="btn sm" id="printDay">🖨 列印</button>' : ''}</h3>
+        ${rows.length ? `<table><tbody>${rows.map(([p, q]) => `<tr><td>${esc(p)}</td><td class="n"><b>${fmt(q)}</b> 箱</td></tr>`).join('')}</tbody></table>` : '<div class="empty">這天沒有貨單</div>'}</div>
+      <div class="card"><h3>當天貨單</h3>${orderTable(os)}</div>` : ''}</div></div>`;
+  document.querySelectorAll('[data-d]').forEach(el => el.onclick = () => { ui.day = el.dataset.d; render(); });
+  $('#dayPick').onchange = e => { ui.day = e.target.value; render(); };
+  if ($('#printDay')) $('#printDay').onclick = () => printHTML(`<h2>${ui.day} 撿貨總表（${os.length} 張單）</h2><table><tr><th>品名</th><th>箱數</th></tr>${rows.map(([p, q]) => `<tr><td>${esc(p)}</td><td>${q}</td></tr>`).join('')}</table>`);
+  bindRows();
+}
+
+/* ---------- 貨品查詢 ---------- */
+function vProd() {
+  ui.pq = ui.pq ?? '';
+  const q = ui.pq.trim();
+  const r = ui.pr || {from:'', to:''};
+  const hits = [];
+  if (q) orders.forEach(o => { if (!inRange(o, r)) return; o.lines.forEach(l => { if (l.product.includes(q)) hits.push({o, l}); }); });
+  const byCust = {}; hits.forEach(h => byCust[h.o.customer] = (byCust[h.o.customer] || 0) + h.l.qty);
+  const sum = hits.reduce((s, h) => s + h.l.qty, 0);
+  $('#view').innerHTML = `<div class="bar"><input type="search" id="pq" list="dlP" placeholder="輸入品名，例如 200cm" value="${esc(ui.pq)}" style="min-width:240px;font-size:15px">${dl('dlP', prodNames())}${rangeBar('pr', {from:'', to:''})}</div>
+    ${!q ? '<div class="card"><div class="empty">輸入品名，就能看到有哪些客戶出過、哪天出、出多少箱</div></div>' : `
+    <div class="kpis"><div class="kpi"><div class="k">共出</div><div class="v">${fmt(sum)} 箱</div></div><div class="kpi"><div class="k">客戶數</div><div class="v">${Object.keys(byCust).length}</div></div><div class="kpi"><div class="k">出貨次數</div><div class="v">${hits.length}</div></div></div>
+    <div class="split"><div class="card"><h3>依客戶</h3>${Object.keys(byCust).length ? `<table><tbody>${Object.entries(byCust).sort((a, b) => b[1] - a[1]).map(([c, n]) => `<tr><td><b>${esc(c)}</b></td><td class="n">${fmt(n)} 箱</td></tr>`).join('')}</tbody></table>` : '<div class="empty">沒有出貨紀錄</div>'}</div>
+    <div class="card"><h3>出貨紀錄</h3>${hits.length ? `<table><thead><tr><th>日期</th><th>客戶</th><th>品名</th><th class="n">箱數</th></tr></thead><tbody>${hits.map(h => `<tr class="click" data-o="${h.o.id}"><td>${md(h.o.date)}</td><td><b>${esc(h.o.customer)}</b></td><td>${esc(h.l.product)}</td><td class="n">${h.l.qty}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">沒有出貨紀錄</div>'}</div></div>`}`;
+  $('#pq').oninput = e => { ui.pq = e.target.value; render(); };
+  bindRange('pr'); bindRows();
+}
+
+/* ---------- 區間統計 ---------- */
+function vStat() {
+  ui.sr = ui.sr || {from: today().slice(0, 8) + '01', to: today()};
+  ui.sq = ui.sq ?? '';
+  const r = ui.sr, q = ui.sq.trim();
+  const agg = {};
+  orders.filter(o => inRange(o, r)).forEach(o => o.lines.forEach(l => {
+    if (q && !l.product.includes(q)) return;
+    const a = agg[l.product] || (agg[l.product] = {qty: 0, cust: {}, n: 0});
+    a.qty += l.qty; a.n++; a.cust[o.customer] = (a.cust[o.customer] || 0) + l.qty;
+  }));
+  const rows = Object.entries(agg).sort((a, b) => b[1].qty - a[1].qty);
+  const sum = rows.reduce((s, [, a]) => s + a.qty, 0);
+  $('#view').innerHTML = `<div class="bar">${rangeBar('sr', ui.sr)}<input type="search" id="sq" list="dlP" placeholder="只看某品項（可留空）" value="${esc(ui.sq)}">${dl('dlP', prodNames())}
+      ${rows.length ? '<button class="btn sm" id="csv">⬇ 匯出 CSV</button>' : ''}</div>
+    <div class="kpis"><div class="kpi"><div class="k">${r.from ? md(r.from) : '最早'} ～ ${r.to ? md(r.to) : '最新'} 共出</div><div class="v">${fmt(sum)} 箱</div></div><div class="kpi"><div class="k">品項數</div><div class="v">${rows.length}</div></div></div>
+    <div class="card">${rows.length ? `<table><thead><tr><th>品名</th><th class="n">總箱數</th><th class="n hide-m">客戶數</th><th>客戶明細</th></tr></thead><tbody>
+      ${rows.map(([p, a]) => `<tr><td><b>${esc(p)}</b></td><td class="n"><b style="font-size:16px">${fmt(a.qty)}</b></td><td class="n hide-m">${Object.keys(a.cust).length}</td>
+        <td><div class="chips">${Object.entries(a.cust).sort((x, y) => y[1] - x[1]).map(([c, n]) => `<span class="chip">${esc(c)} <b>${n}</b></span>`).join('')}</div></td></tr>`).join('')}</tbody></table>` : '<div class="empty">這段期間沒有出貨</div>'}</div>`;
+  bindRange('sr');
+  $('#sq').oninput = e => { ui.sq = e.target.value; render(); };
+  if ($('#csv')) $('#csv').onclick = () => {
+    const lines = [['品名', '總箱數', '客戶數', '客戶明細']].concat(rows.map(([p, a]) => [p, a.qty, Object.keys(a.cust).length, Object.entries(a.cust).map(([c, n]) => c + ' ' + n).join('、')]));
+    const csv = '\ufeff' + lines.map(l => l.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type: 'text/csv'}));
+    a.download = `出貨統計_${r.from || '全部'}_${r.to || ''}.csv`; a.click();
+  };
+}
+
+/* ---------- 商品清單 ---------- */
+function vList() {
+  const used = {}; orders.forEach(o => o.lines.forEach(l => used[l.product] = (used[l.product] || 0) + 1));
+  const names = new Set(products.map(p => p.name));
+  const orphan = Object.keys(used).filter(n => !names.has(n));
+  $('#view').innerHTML = `<div class="card" style="margin-bottom:12px"><h3>新增商品 <small>一行一個，可以一次貼很多行</small></h3>
+      <div style="padding:12px 14px"><textarea id="newP" rows="3" style="width:100%" placeholder="200cm&#10;300cm&#10;1000cm"></textarea>
+      <div class="acts" style="margin-top:8px"><button class="btn pri" id="addP">加入清單</button></div></div></div>
+    <div class="card"><h3>商品清單 <small>${products.length} 項。「別名」是手寫單上常見的其他寫法，拍照辨識會參考</small></h3>
+      ${products.length ? `<table><thead><tr><th>品名</th><th>別名（用逗號隔開）</th><th class="n hide-m">出貨次數</th><th></th></tr></thead><tbody>
+      ${products.map((p, i) => `<tr><td><b>${esc(p.name)}</b></td><td><input data-al="${i}" value="${esc(p.aliases.join(','))}" style="width:100%"></td><td class="n hide-m">${used[p.name] || 0}</td>
+        <td style="white-space:nowrap"><button class="btn sm" data-rn="${i}">改名</button> <button class="btn sm danger" data-del="${i}">刪除</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">還沒有商品，先在上面加入，或直接開貨單，新品名會自動加進來</div>'}
+      ${orphan.length ? `<p class="note" style="padding:0 14px 12px">貨單裡有、清單裡沒有的品名：${orphan.map(esc).join('、')}</p>` : ''}</div>`;
+  $('#addP').onclick = async () => {
+    const add = $('#newP').value.split(/\n/).map(s => s.trim()).filter(Boolean);
+    if (!add.length) return;
+    const list = products.concat(add.filter(n => !names.has(n)).map(name => ({name, aliases: []})));
+    await saveProducts(list);
+  };
+  document.querySelectorAll('[data-al]').forEach(el => el.onchange = async () => {
+    const list = products.map((p, i) => i === +el.dataset.al ? {...p, aliases: el.value.split(/[,，、]/).map(s => s.trim()).filter(Boolean)} : p);
+    await saveProducts(list);
+  });
+  document.querySelectorAll('[data-rn]').forEach(b => b.onclick = async () => {
+    const p = products[+b.dataset.rn];
+    const to = (prompt(`把「${p.name}」改成什麼？\n（所有舊貨單也會一起改；如果新名稱已存在，就會合併成同一個品項）`, p.name) || '').trim();
+    if (!to || to === p.name) return;
+    try { $('#sync').textContent = '更新中…'; const d = await api({action:'renameProduct', from:p.name, to}); orders = d.orders; products = d.products; render(); $('#sync').textContent = '已更新'; }
+    catch (e) { alert('失敗：' + e.message); }
+  });
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const p = products[+b.dataset.del];
+    if (!confirm(`從清單刪除「${p.name}」？${used[p.name] ? `\n（舊貨單裡的 ${used[p.name]} 筆紀錄不會被刪）` : ''}`)) return;
+    await saveProducts(products.filter(x => x !== p));
+  });
+}
+async function saveProducts(list) {
+  try { $('#sync').textContent = '儲存中…'; const d = await api({action:'saveProducts', products:list}); products = d.products; render(); $('#sync').textContent = '已儲存'; }
+  catch (e) { alert('儲存失敗：' + e.message); }
+}
+
+/* ---------- 單張貨單 ---------- */
+function openOrder(id) {
+  editing = false;
+  const o = orders.find(x => x.id === id); if (!o) return;
+  $('#box').innerHTML = `<h2><span>${esc(o.customer)}　<small style="font-weight:400;color:var(--mute)">${o.date}</small></span><button class="btn sm" id="x">✕</button></h2>
+    <table><thead><tr><th>品名</th><th class="n">數量（箱）</th></tr></thead><tbody>${o.lines.map(l => `<tr><td>${esc(l.product)}</td><td class="n"><b>${l.qty}</b></td></tr>`).join('')}
+    <tr><td><b>合計</b></td><td class="n"><b>${total(o)}</b></td></tr></tbody></table>
+    ${o.note ? `<p class="note">📝 ${esc(o.note)}</p>` : ''}
+    <div class="acts"><button class="btn danger left" id="del">刪除</button><button class="btn" id="prt">🖨 列印撿貨單</button><button class="btn" id="cp">複製成新單</button><button class="btn pri" id="ed">修改</button></div>`;
+  $('#dlg').hidden = false;
+  $('#x').onclick = closeDlg;
+  $('#ed').onclick = () => openEditor(o);
+  $('#cp').onclick = () => openEditor({...o, id: '', date: today()});
+  $('#prt').onclick = () => printOrder(o);
+  $('#del').onclick = async () => {
+    if (!confirm(`刪除「${o.customer} ${o.date}」這張貨單？`)) return;
+    try { await api({action:'deleteOrder', id:o.id}); orders = orders.filter(x => x.id !== o.id); closeDlg(); render(); } catch (e) { alert('刪除失敗：' + e.message); }
+  };
+}
+const closeDlg = () => { $('#dlg').hidden = true; };
+let editing = false;
+$('#dlg').addEventListener('mousedown', e => { if (e.target.id === 'dlg' && (!editing || confirm('關閉這個視窗？沒儲存的內容會不見'))) closeDlg(); });
+
+function printOrder(o) {
+  printHTML(`<h2 style="margin:0 0 6px">${esc(o.customer)}</h2><div style="margin-bottom:10px">日期：${o.date}</div>
+    <table style="border-collapse:collapse;width:100%"><tr><th style="text-align:left">品名</th><th>數量</th><th>確認</th><th>倉庫</th></tr>
+    ${o.lines.map(l => `<tr><td>${esc(l.product)}</td><td style="text-align:center">${l.qty}</td><td></td><td></td></tr>`).join('')}
+    <tr><td><b>合計</b></td><td style="text-align:center"><b>${total(o)}</b></td><td></td><td></td></tr></table>${o.note ? `<p>備註：${esc(o.note)}</p>` : ''}`);
+}
+function printHTML(h) { $('#print').innerHTML = h; window.print(); }
+
+/* ---------- 新增 / 修改 ---------- */
+let draft = null;
+function openEditor(o) {
+  draft = o ? {id: o.id, date: o.date, customer: o.customer, note: o.note || '', lines: o.lines.map(l => ({...l}))}
+            : {id: '', date: today(), customer: '', note: '', lines: []};
+  while (draft.lines.length < 5) draft.lines.push({product: '', qty: ''});
+  drawEditor();
+}
+function drawEditor(msg) {
+  editing = true;
+  const known = new Set(prodNames());
+  $('#box').innerHTML = `<h2><span>${draft.id ? '修改貨單' : '新增貨單'}</span><button class="btn sm" id="x">✕</button></h2>
+    ${draft.id ? '' : `<div class="photo"><button class="btn pri" id="snap">📷 拍照辨識手寫單</button><span class="t" id="snapMsg">${msg || (hasGemini ? '拍好後會自動填入，請再核對一次' : '尚未設定辨識金鑰，暫時只能手動輸入')}</span></div>`}
+    <div class="grid2"><label class="fld">日期<input type="date" id="eDate" value="${draft.date}"></label>
+      <label class="fld">客戶<input id="eCust" list="dlC" value="${esc(draft.customer)}" placeholder="客戶名稱" autocomplete="off"></label></div>
+    ${dl('dlC', customers())}${dl('dlP2', [...known])}
+    <table class="lines" style="margin-top:10px"><thead><tr><th style="padding:4px">品名</th><th style="padding:4px">數量（箱）</th><th></th></tr></thead><tbody>
+    ${draft.lines.map((l, i) => `<tr class="${l.product && !known.has(l.product) ? 'unk' : ''}"><td><input class="p" data-i="${i}" data-f="product" list="dlP2" value="${esc(l.product)}" autocomplete="off">
+      ${l.raw ? `<div class="raw">照片寫：${esc(l.raw)}${l.product ? '' : '（對不到商品，請選或輸入）'}</div>` : ''}${l.product && !known.has(l.product) ? '<div class="raw">新品名，儲存後會加入商品清單</div>' : ''}</td>
+      <td class="q"><input class="q" type="number" inputmode="numeric" min="0" data-i="${i}" data-f="qty" value="${esc(l.qty)}"></td>
+      <td><button class="btn sm" data-rm="${i}" tabindex="-1">✕</button></td></tr>`).join('')}</tbody></table>
+    <button class="btn sm" id="addL" style="margin-top:6px">＋ 加一行</button>
+    <label class="fld" style="margin-top:10px">備註<input id="eNote" value="${esc(draft.note)}"></label>
+    <div class="acts"><span class="sum left" id="eSum"></span><button class="btn" id="cancel">取消</button><button class="btn pri" id="save">儲存</button></div>`;
+  $('#dlg').hidden = false;
+  const sumUp = () => { $('#eSum').textContent = `共 ${draft.lines.filter(l => l.product && +l.qty).length} 項・${draft.lines.reduce((s, l) => s + (+l.qty || 0), 0)} 箱`; };
+  sumUp();
+  $('#x').onclick = $('#cancel').onclick = closeDlg;
+  $('#eDate').onchange = e => draft.date = e.target.value;
+  $('#eCust').oninput = e => draft.customer = e.target.value;
+  $('#eNote').oninput = e => draft.note = e.target.value;
+  document.querySelectorAll('.lines input').forEach(el => {
+    el.oninput = () => { const l = draft.lines[+el.dataset.i]; l[el.dataset.f] = el.value; sumUp(); };
+    el.onchange = () => { if (el.dataset.f === 'product') { const tr = el.closest('tr'); tr.classList.toggle('unk', !!el.value && !known.has(el.value)); } };
+    el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const all = [...document.querySelectorAll('.lines input')]; const nx = all[all.indexOf(el) + 1]; if (nx) nx.focus(); else $('#addL').click(); } };
+  });
+  document.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { draft.lines.splice(+b.dataset.rm, 1); drawEditor(); });
+  $('#addL').onclick = () => { draft.lines.push({product: '', qty: ''}); drawEditor(); const ps = document.querySelectorAll('.lines input.p'); ps[ps.length - 1].focus(); };
+  if ($('#snap')) $('#snap').onclick = () => { if (!hasGemini) return alert('還沒設定 GEMINI_KEY，請先在 Apps Script 的指令碼屬性加入金鑰'); $('#file').value = ''; $('#file').click(); };
+  $('#save').onclick = async () => {
+    const lines = draft.lines.filter(l => String(l.product).trim() && +l.qty > 0).map(l => ({product: String(l.product).trim(), qty: +l.qty}));
+    if (!draft.customer.trim()) return alert('請填客戶');
+    if (!lines.length) return alert('至少要有一個品項和數量');
+    const half = draft.lines.filter(l => (String(l.product).trim() && !(+l.qty > 0)) || (!String(l.product).trim() && +l.qty > 0));
+    if (half.length && !confirm(`有 ${half.length} 行只填了品名或數量，這幾行不會存。要繼續嗎？`)) return;
+    $('#save').disabled = true; $('#save').textContent = '儲存中…';
+    try {
+      const d = await api({action:'saveOrder', order:{id: draft.id, date: draft.date, customer: draft.customer.trim(), note: draft.note, lines}});
+      orders = orders.filter(x => x.id !== d.order.id); orders.push(d.order);
+      orders.sort((a, b) => (b.date + b.created).localeCompare(a.date + a.created));
+      closeDlg(); render(); load().catch(() => {});
+    } catch (e) { alert('儲存失敗：' + e.message); $('#save').disabled = false; $('#save').textContent = '儲存'; }
+  };
+}
+
+/* ---------- 拍照辨識 ---------- */
+$('#file').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  $('#snapMsg').textContent = '辨識中，大約 5～15 秒…'; $('#snap').disabled = true;
+  try {
+    const b64 = await shrink(f, 1600);
+    const r = await api({action:'recognize', image: b64, mime: 'image/jpeg'});
+    if (r.customer && !draft.customer) draft.customer = r.customer;
+    if (r.date) draft.date = r.date;
+    const got = r.items.map(i => ({product: i.product, qty: i.qty || '', raw: i.raw}));
+    draft.lines = got.concat(draft.lines.filter(l => l.product || l.qty));
+    while (draft.lines.length < got.length + 1) draft.lines.push({product: '', qty: ''});
+    const miss = got.filter(l => !l.product).length;
+    drawEditor(`✅ 辨識到 ${got.length} 項${miss ? `，有 ${miss} 項對不到商品（黃色），請補上` : ''}。請核對數量後再儲存`);
+  } catch (err) {
+    drawEditor('❌ ' + err.message);
+  }
+};
+function shrink(file, max) {
+  return new Promise((ok, bad) => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      ok(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.onerror = () => bad(new Error('讀不到這張照片'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+/* ---------- 啟動 ---------- */
+if (key) load().catch(e => { if (e.message !== 'unauthorized') $('#loginMsg').textContent = '連線失敗：' + e.message; });
+</script>
+</body>
+</html>
