@@ -70,7 +70,17 @@ tr.click:hover td{background:var(--soft)}
 .photo .t{font-size:13px;color:#9a3412;flex-basis:100%}
 .pv{margin:0 0 12px}.pv img{max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block}
 .pv.big img{max-height:none;cursor:zoom-out}
-.batch{font-size:12.5px;color:var(--brand2);font-weight:700}
+.tag{display:inline-block;font-size:11.5px;border-radius:5px;padding:1px 6px;margin-left:4px;font-weight:600;white-space:nowrap}
+.tag.wait{background:#fef3c7;color:#92400e}.tag.done{background:#dcfce7;color:var(--green)}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.th{position:relative;width:96px}
+.th img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block}
+.th .s{font-size:11.5px;color:var(--mute);text-align:center;margin-top:2px;line-height:1.3}
+.th .s.bad{color:var(--red)}
+.th .rm{position:absolute;top:-6px;right:-6px;background:#fff;border:1px solid var(--line);border-radius:50%;width:22px;height:22px;padding:0;font-size:12px;line-height:20px}
+.big{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:60;display:flex;align-items:center;justify-content:center;cursor:zoom-out}
+.big img{max-width:96vw;max-height:94vh}
+tr.pick td{background:#fffbeb}
 .note{font-size:12.5px;color:var(--mute);margin:8px 0 0}
 .login{position:fixed;inset:0;background:var(--brand);display:flex;align-items:center;justify-content:center;z-index:50}
 .login form{background:#fff;border-radius:14px;padding:28px 30px;width:320px;text-align:center}
@@ -114,6 +124,7 @@ tr.click:hover td{background:var(--soft)}
   </div>
   <nav class="tabs" id="tabs">
     <button class="tab on" data-v="all">總單</button>
+    <button class="tab" data-v="pend">待出貨</button>
     <button class="tab" data-v="cust">客戶</button>
     <button class="tab" data-v="date">日期</button>
     <button class="tab" data-v="prod">貨品查詢</button>
@@ -142,6 +153,8 @@ const md = s => s ? `${+s.slice(5,7)}/${+s.slice(8)}` : '';
 const fmt = n => Number(n).toLocaleString('en-US');
 const total = o => o.lines.reduce((s, l) => s + l.qty, 0);
 const byNum = (a, b) => b - a;
+const isWait = o => o.status !== '已出貨';
+const tag = o => isWait(o) ? '<span class="tag wait">待出貨</span>' : '<span class="tag done">已出貨</span>';
 
 let key = localStorage.getItem('so_key') || '';
 let orders = [], products = [], hasGemini = false, view = 'all', ui = {};
@@ -191,7 +204,7 @@ $('#btnNew').onclick = () => openEditor();
 
 function render() {
   const keepFocus = document.activeElement && document.activeElement.id;
-  ({all: vAll, cust: vCust, date: vDate, prod: vProd, stat: vStat, list: vList})[view]();
+  ({all: vAll, pend: vPend, cust: vCust, date: vDate, prod: vProd, stat: vStat, list: vList})[view]();
   if (keepFocus && $('#' + keepFocus)) { const el = $('#' + keepFocus); el.focus(); if (el.setSelectionRange && el.type !== 'date') el.setSelectionRange(el.value.length, el.value.length); }
 }
 const customers = () => [...new Set(orders.map(o => o.customer))].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
@@ -219,8 +232,12 @@ const chips = o => `<div class="chips">${o.lines.map(l => `<span class="chip">${
 function orderTable(list, opt = {}) {
   if (!list.length) return '<div class="empty">沒有符合的貨單</div>';
   return `<table><thead><tr><th>日期</th>${opt.noCust ? '' : '<th>客戶</th>'}<th>品項</th><th class="n">箱數</th></tr></thead><tbody>
-    ${list.map(o => `<tr class="click" data-o="${o.id}"><td style="white-space:nowrap">${md(o.date)}</td>${opt.noCust ? '' : `<td style="white-space:nowrap"><b>${esc(o.customer)}</b></td>`}
+    ${list.map(o => `<tr class="click" data-o="${o.id}"><td style="white-space:nowrap">${md(o.date)}${opt.noTag ? '' : '<br>' + tag(o)}</td>${opt.noCust ? '' : `<td style="white-space:nowrap"><b>${esc(o.customer)}</b></td>`}
       <td>${chips(o)}${o.note ? `<div class="sum">📝 ${esc(o.note)}</div>` : ''}</td><td class="n"><b>${total(o)}</b></td></tr>`).join('')}</tbody></table>`;
+}
+async function setStatus(ids, status) {
+  try { $('#sync').textContent = '更新中…'; const d = await api({action:'setStatus', ids, status}); orders = d.orders; render(); $('#sync').textContent = '已更新'; return true; }
+  catch (e) { alert('更新失敗：' + e.message); return false; }
 }
 function bindRows() { document.querySelectorAll('[data-o]').forEach(tr => tr.onclick = () => openOrder(tr.dataset.o)); }
 
@@ -237,6 +254,53 @@ function vAll() {
     <div class="card">${orderTable(list)}</div>`;
   $('#allQ').oninput = e => { ui.allQ = e.target.value; render(); };
   bindRange('all'); bindRows();
+}
+
+/* ---------- 待出貨 ---------- */
+function vPend() {
+  ui.pendSel = ui.pendSel || new Set();
+  ui.pendQ = ui.pendQ ?? '';
+  const q = ui.pendQ.trim();
+  const all = orders.filter(isWait);
+  const list = all.filter(o => !q || o.customer.includes(q) || o.lines.some(l => l.product.includes(q)))
+    .sort((a, b) => (a.date + a.created).localeCompare(b.date + b.created));     // 舊的排前面，先出
+  [...ui.pendSel].forEach(id => { if (!list.some(o => o.id === id)) ui.pendSel.delete(id); });
+  const agg = {};
+  list.forEach(o => o.lines.forEach(l => {
+    if (q && !o.customer.includes(q) && !l.product.includes(q)) return;     // 搜品名時只算那個品項
+    const a = agg[l.product] || (agg[l.product] = {qty: 0, cust: {}, ids: new Set()});
+    a.qty += l.qty; a.ids.add(o.id); a.cust[o.customer] = (a.cust[o.customer] || 0) + l.qty;
+  }));
+  const rows = Object.entries(agg).sort((a, b) => b[1].qty - a[1].qty);
+  const sum = rows.reduce((s, [, a]) => s + a.qty, 0);
+  const sel = ui.pendSel.size;
+  $('#view').innerHTML = `<div class="bar"><input type="search" id="pendQ" list="dlP" placeholder="輸入品名或客戶，例如 200cm" value="${esc(ui.pendQ)}" style="min-width:240px;font-size:15px">${dl('dlP', prodNames())}</div>
+    <div class="kpis"><div class="kpi"><div class="k">待出貨單</div><div class="v">${list.length}</div></div>
+      <div class="kpi"><div class="k">待出總箱數</div><div class="v">${fmt(sum)}</div></div>
+      <div class="kpi"><div class="k">品項數</div><div class="v">${rows.length}</div></div>
+      <div class="kpi"><div class="k">客戶數</div><div class="v">${new Set(list.map(o => o.customer)).size}</div></div></div>
+    <div class="card" style="margin-bottom:12px"><h3>待出貨品統計 <small>還沒出貨的貨單，每個品項合計要出幾箱</small>${rows.length ? '<button class="btn sm" id="printPend">🖨 列印</button>' : ''}</h3>
+      ${rows.length ? `<table><thead><tr><th>品名</th><th class="n">訂單數</th><th class="n">待出箱數</th><th>客戶明細</th></tr></thead><tbody>
+      ${rows.map(([p, a]) => `<tr><td><b>${esc(p)}</b></td><td class="n">${a.ids.size} 張</td><td class="n"><b style="font-size:16px">${fmt(a.qty)}</b></td>
+        <td><div class="chips">${Object.entries(a.cust).sort((x, y) => y[1] - x[1]).map(([c, n]) => `<span class="chip">${esc(c)} <b>${n}</b></span>`).join('')}</div></td></tr>`).join('')}</tbody></table>` : '<div class="empty">🎉 目前沒有待出貨的貨單</div>'}</div>
+    ${list.length ? `<div class="card"><h3><span>待出貨單 <small>勾選後可一次標成已出貨</small></span>
+        <span><button class="btn sm" id="pendAll">${sel === list.length ? '全不選' : '全選'}</button> <button class="btn sm pri" id="pendDone" ${sel ? '' : 'disabled'}>✔ 標為已出貨${sel ? `（${sel} 張）` : ''}</button></span></h3>
+      <table><thead><tr><th style="width:34px"></th><th>日期</th><th>客戶</th><th>品項</th><th class="n">箱數</th></tr></thead><tbody>
+      ${list.map(o => `<tr class="${ui.pendSel.has(o.id) ? 'pick' : ''}"><td><input type="checkbox" data-pk="${o.id}" ${ui.pendSel.has(o.id) ? 'checked' : ''} style="width:18px;height:18px"></td>
+        <td class="click" data-o="${o.id}" style="white-space:nowrap;cursor:pointer">${md(o.date)}</td><td class="click" data-o="${o.id}" style="white-space:nowrap;cursor:pointer"><b>${esc(o.customer)}</b></td>
+        <td class="click" data-o="${o.id}" style="cursor:pointer">${chips(o)}${o.note ? `<div class="sum">📝 ${esc(o.note)}</div>` : ''}</td><td class="n"><b>${total(o)}</b></td></tr>`).join('')}</tbody></table></div>` : ''}`;
+  $('#pendQ').oninput = e => { ui.pendQ = e.target.value; render(); };
+  document.querySelectorAll('[data-pk]').forEach(c => c.onchange = () => { c.checked ? ui.pendSel.add(c.dataset.pk) : ui.pendSel.delete(c.dataset.pk); render(); });
+  if ($('#pendAll')) $('#pendAll').onclick = () => { if (sel === list.length) ui.pendSel.clear(); else list.forEach(o => ui.pendSel.add(o.id)); render(); };
+  if ($('#pendDone')) $('#pendDone').onclick = async () => {
+    const ids = [...ui.pendSel];
+    if (!confirm(`把勾選的 ${ids.length} 張貨單標成「已出貨」？`)) return;
+    if (await setStatus(ids, '已出貨')) { ui.pendSel.clear(); render(); }
+  };
+  if ($('#printPend')) $('#printPend').onclick = () => printHTML(`<h2>待出貨品統計（${list.length} 張單，共 ${sum} 箱）</h2><div style="margin-bottom:8px">列印時間：${new Date().toLocaleString('zh-TW', {hour12:false})}</div>
+    <table style="border-collapse:collapse;width:100%"><tr><th style="text-align:left">品名</th><th>訂單數</th><th>箱數</th><th style="text-align:left">客戶明細</th></tr>
+    ${rows.map(([p, a]) => `<tr><td>${esc(p)}</td><td style="text-align:center">${a.ids.size}</td><td style="text-align:center">${a.qty}</td><td>${Object.entries(a.cust).map(([c, n]) => esc(c) + ' ' + n).join('、')}</td></tr>`).join('')}</table>`);
+  bindRows();
 }
 
 /* ---------- 客戶 ---------- */
@@ -292,11 +356,14 @@ function vProd() {
   if (q) orders.forEach(o => { if (!inRange(o, r)) return; o.lines.forEach(l => { if (l.product.includes(q)) hits.push({o, l}); }); });
   const byCust = {}; hits.forEach(h => byCust[h.o.customer] = (byCust[h.o.customer] || 0) + h.l.qty);
   const sum = hits.reduce((s, h) => s + h.l.qty, 0);
+  const wh = hits.filter(h => isWait(h.o)), wSum = wh.reduce((s, h) => s + h.l.qty, 0);
   $('#view').innerHTML = `<div class="bar"><input type="search" id="pq" list="dlP" placeholder="輸入品名，例如 200cm" value="${esc(ui.pq)}" style="min-width:240px;font-size:15px">${dl('dlP', prodNames())}${rangeBar('pr', {from:'', to:''})}</div>
     ${!q ? '<div class="card"><div class="empty">輸入品名，就能看到有哪些客戶出過、哪天出、出多少箱</div></div>' : `
-    <div class="kpis"><div class="kpi"><div class="k">共出</div><div class="v">${fmt(sum)} 箱</div></div><div class="kpi"><div class="k">客戶數</div><div class="v">${Object.keys(byCust).length}</div></div><div class="kpi"><div class="k">出貨次數</div><div class="v">${hits.length}</div></div></div>
+    <div class="kpis"><div class="kpi" style="border-color:#fcd34d;background:#fffbeb"><div class="k">目前接單・待出貨</div><div class="v">${new Set(wh.map(h => h.o.id)).size} 張・${fmt(wSum)} 箱</div></div>
+      <div class="kpi"><div class="k">已出貨</div><div class="v">${fmt(sum - wSum)} 箱</div></div><div class="kpi"><div class="k">全部合計</div><div class="v">${fmt(sum)} 箱</div></div>
+      <div class="kpi"><div class="k">客戶數</div><div class="v">${Object.keys(byCust).length}</div></div></div>
     <div class="split"><div class="card"><h3>依客戶</h3>${Object.keys(byCust).length ? `<table><tbody>${Object.entries(byCust).sort((a, b) => b[1] - a[1]).map(([c, n]) => `<tr><td><b>${esc(c)}</b></td><td class="n">${fmt(n)} 箱</td></tr>`).join('')}</tbody></table>` : '<div class="empty">沒有出貨紀錄</div>'}</div>
-    <div class="card"><h3>出貨紀錄</h3>${hits.length ? `<table><thead><tr><th>日期</th><th>客戶</th><th>品名</th><th class="n">箱數</th></tr></thead><tbody>${hits.map(h => `<tr class="click" data-o="${h.o.id}"><td>${md(h.o.date)}</td><td><b>${esc(h.o.customer)}</b></td><td>${esc(h.l.product)}</td><td class="n">${h.l.qty}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">沒有出貨紀錄</div>'}</div></div>`}`;
+    <div class="card"><h3>出貨紀錄</h3>${hits.length ? `<table><thead><tr><th>日期</th><th>客戶</th><th>品名</th><th class="n">箱數</th></tr></thead><tbody>${hits.map(h => `<tr class="click" data-o="${h.o.id}"><td style="white-space:nowrap">${md(h.o.date)}<br>${tag(h.o)}</td><td><b>${esc(h.o.customer)}</b></td><td>${esc(h.l.product)}</td><td class="n">${h.l.qty}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">沒有出貨紀錄</div>'}</div></div>`}`;
   $('#pq').oninput = e => { ui.pq = e.target.value; render(); };
   bindRange('pr'); bindRows();
 }
@@ -375,16 +442,18 @@ async function saveProducts(list) {
 function openOrder(id) {
   editing = false;
   const o = orders.find(x => x.id === id); if (!o) return;
-  $('#box').innerHTML = `<h2><span>${esc(o.customer)}　<small style="font-weight:400;color:var(--mute)">${o.date}</small></span><button class="btn sm" id="x">✕</button></h2>
+  $('#box').innerHTML = `<h2><span>${esc(o.customer)}　<small style="font-weight:400;color:var(--mute)">${o.date}</small>${tag(o)}</span><button class="btn sm" id="x">✕</button></h2>
     <table><thead><tr><th>品名</th><th class="n">數量（箱）</th></tr></thead><tbody>${o.lines.map(l => `<tr><td>${esc(l.product)}</td><td class="n"><b>${l.qty}</b></td></tr>`).join('')}
     <tr><td><b>合計</b></td><td class="n"><b>${total(o)}</b></td></tr></tbody></table>
     ${o.note ? `<p class="note">📝 ${esc(o.note)}</p>` : ''}
-    <div class="acts"><button class="btn danger left" id="del">刪除</button><button class="btn" id="prt">🖨 列印撿貨單</button><button class="btn" id="cp">複製成新單</button><button class="btn pri" id="ed">修改</button></div>`;
+    <div class="acts"><button class="btn danger left" id="del">刪除</button><button class="btn" id="prt">🖨 列印撿貨單</button><button class="btn" id="cp">複製成新單</button><button class="btn" id="ed">修改</button>
+      <button class="btn pri" id="st">${isWait(o) ? '✔ 標為已出貨' : '↩ 改回待出貨'}</button></div>`;
   $('#dlg').hidden = false;
   $('#x').onclick = closeDlg;
   $('#ed').onclick = () => openEditor(o);
   $('#cp').onclick = () => openEditor({...o, id: '', date: today()});
   $('#prt').onclick = () => printOrder(o);
+  $('#st').onclick = async () => { if (await setStatus([o.id], isWait(o) ? '已出貨' : '待出貨')) openOrder(o.id); };
   $('#del').onclick = async () => {
     if (!confirm(`刪除「${o.customer} ${o.date}」這張貨單？`)) return;
     try { await api({action:'deleteOrder', id:o.id}); orders = orders.filter(x => x.id !== o.id); closeDlg(); render(); } catch (e) { alert('刪除失敗：' + e.message); }
@@ -402,24 +471,40 @@ function printOrder(o) {
 }
 function printHTML(h) { $('#print').innerHTML = h; window.print(); }
 
-/* ---------- 新增 / 修改 ---------- */
-let draft = null;
+/* ---------- 新增 / 修改 ----------
+ * 一張貨單可以放好幾張照片：一次從相簿選多張、或拍完再拍下一張，
+ * 辨識結果都會合進「同一張」貨單（同品名的箱數會相加）。 */
+let draft = null, tick = null;
 function openEditor(o) {
-  draft = o ? {id: o.id, date: o.date, customer: o.customer, note: o.note || '', lines: o.lines.map(l => ({...l}))}
-            : {id: '', date: today(), customer: '', note: '', lines: []};
+  draft = o ? {id: o.id, date: o.date, customer: o.customer, note: o.note || '', lines: o.lines.map(l => ({...l})), autoDate: false}
+            : {id: '', date: today(), customer: '', note: '', lines: [], autoDate: true};
+  draft.photos = [];
   while (draft.lines.length < 5) draft.lines.push({product: '', qty: ''});
-  jobs = []; curJob = null;
+  clearInterval(tick);
   drawEditor();
 }
-function drawEditor(msg) {
+const photoBusy = () => draft && draft.photos.some(ph => ph.st === 'wait');
+function photoMsg() {
+  const ps = draft.photos;
+  if (!ps.length) return hasGemini ? '同一位客人有兩張以上的單：可以一次從相簿選多張，或拍完再按「拍照」加下一張，都會合成同一張貨單' : '尚未設定辨識金鑰，暫時只能手動輸入';
+  const wait = ps.filter(p => p.st === 'wait').length, bad = ps.filter(p => p.st === 'err').length;
+  const n = ps.filter(p => p.st === 'ok').reduce((s, p) => s + p.n, 0);
+  if (wait) return `辨識中…（${ps.length - wait} / ${ps.length} 張完成）`;
+  const miss = draft.lines.filter(l => l.raw && !l.product).length;
+  return (bad ? `❌ 有 ${bad} 張辨識失敗，可按該張下方的「重試」，或手動輸入。` : `✅ ${ps.length} 張照片共辨識到 ${n} 項，已合成同一張貨單。`)
+    + (miss ? `有 ${miss} 項對不到商品（黃色），請補上。` : '') + (draft.warn || '') + '請對照照片核對後儲存';
+}
+function drawEditor() {
   editing = true;
+  // 重畫時保留游標位置（辨識結果回來時，正在打字的欄位不會跳掉）
+  const ae = document.activeElement, keep = ae && ae.closest && ae.closest('#box') ? (ae.id ? '#' + ae.id : ae.dataset.i != null ? `.lines input[data-i="${ae.dataset.i}"][data-f="${ae.dataset.f}"]` : '') : '';
   const known = new Set(prodNames());
   $('#box').innerHTML = `<h2><span>${draft.id ? '修改貨單' : '新增貨單'}</span><button class="btn sm" id="x">✕</button></h2>
-    ${draft.id ? '' : `<div class="photo"><button class="btn pri" id="snap">📷 拍照</button><button class="btn pri" id="album">🖼 從相簿選（可多張）</button>
-      ${curJob && draft.err ? '<button class="btn" id="retry">🔄 重新辨識</button>' : ''}
-      ${curJob && curJob.total > 1 ? `<span class="batch">第 ${curJob.idx} / ${curJob.total} 張</span>` : ''}
-      <span class="t" id="snapMsg">${msg || draft.msg || (hasGemini ? '選好照片後會自動填入，請再核對一次' : '尚未設定辨識金鑰，暫時只能手動輸入')}</span></div>
-      ${curJob ? `<div class="pv" id="pv"><img src="${curJob.url}" alt="貨單照片"></div>` : ''}`}
+    <div class="photo"><button class="btn pri" id="snap">📷 拍照</button><button class="btn pri" id="album">🖼 從相簿選（可多張）</button>
+      <span class="t" id="snapMsg">${photoMsg()}</span></div>
+    ${draft.photos.length ? `<div class="thumbs">${draft.photos.map((ph, i) => `<div class="th"><img src="${ph.url}" data-big="${i}" alt="第 ${i + 1} 張">
+      ${ph.st !== 'ok' ? `<button class="rm" data-prm="${i}" title="移除這張">✕</button>` : ''}
+      <div class="s ${ph.st === 'err' ? 'bad' : ''}" data-ps="${i}">${photoState(ph, i)}</div></div>`).join('')}</div>` : ''}
     <div class="grid2"><label class="fld">日期<input type="date" id="eDate" value="${draft.date}"></label>
       <label class="fld">客戶<input id="eCust" list="dlC" value="${esc(draft.customer)}" placeholder="客戶名稱" autocomplete="off"></label></div>
     ${dl('dlC', customers())}${dl('dlP2', [...known])}
@@ -430,15 +515,13 @@ function drawEditor(msg) {
       <td><button class="btn sm" data-rm="${i}" tabindex="-1">✕</button></td></tr>`).join('')}</tbody></table>
     <button class="btn sm" id="addL" style="margin-top:6px">＋ 加一行</button>
     <label class="fld" style="margin-top:10px">備註<input id="eNote" value="${esc(draft.note)}"></label>
-    <div class="acts"><span class="sum left" id="eSum"></span>${curJob && jobs.length ? `<button class="btn" id="skip">跳過這張</button>` : ''}<button class="btn" id="cancel">${curJob && jobs.length ? '全部取消' : '取消'}</button><button class="btn pri" id="save">儲存</button></div>`;
+    <div class="acts"><span class="sum left" id="eSum"></span><button class="btn" id="cancel">取消</button><button class="btn pri" id="save">儲存</button></div>`;
   $('#dlg').hidden = false;
+  if (keep && $(keep)) { const el = $(keep); el.focus(); try { if (el.type !== 'number' && el.type !== 'date') el.setSelectionRange(el.value.length, el.value.length); } catch (_) {} }
   const sumUp = () => { $('#eSum').textContent = `共 ${draft.lines.filter(l => l.product && +l.qty).length} 項・${draft.lines.reduce((s, l) => s + (+l.qty || 0), 0)} 箱`; };
   sumUp();
-  $('#x').onclick = $('#cancel').onclick = () => { jobs = []; curJob = null; closeDlg(); };
-  if ($('#skip')) $('#skip').onclick = nextJob;
-  if ($('#retry')) $('#retry').onclick = retryJob;
-  if ($('#pv')) $('#pv').onclick = () => $('#pv').classList.toggle('big');
-  $('#eDate').onchange = e => draft.date = e.target.value;
+  $('#x').onclick = $('#cancel').onclick = () => { clearInterval(tick); draft.photos.forEach(p => p.gone = true); closeDlg(); };
+  $('#eDate').onchange = e => { draft.date = e.target.value; draft.autoDate = false; };
   $('#eCust').oninput = e => draft.customer = e.target.value;
   $('#eNote').oninput = e => draft.note = e.target.value;
   document.querySelectorAll('.lines input').forEach(el => {
@@ -447,10 +530,14 @@ function drawEditor(msg) {
     el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const all = [...document.querySelectorAll('.lines input')]; const nx = all[all.indexOf(el) + 1]; if (nx) nx.focus(); else $('#addL').click(); } };
   });
   document.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { draft.lines.splice(+b.dataset.rm, 1); drawEditor(); });
+  document.querySelectorAll('[data-big]').forEach(im => im.onclick = () => showBig(draft.photos[+im.dataset.big].url));
+  document.querySelectorAll('[data-prm]').forEach(b => b.onclick = () => { const ph = draft.photos[+b.dataset.prm]; ph.gone = true; draft.photos.splice(+b.dataset.prm, 1); drawEditor(); });
+  document.querySelectorAll('[data-retry]').forEach(b => b.onclick = () => recognize(draft.photos[+b.dataset.retry], 0));
   $('#addL').onclick = () => { draft.lines.push({product: '', qty: ''}); drawEditor(); const ps = document.querySelectorAll('.lines input.p'); ps[ps.length - 1].focus(); };
   const pick = id => () => { if (!hasGemini) return alert('還沒設定 GEMINI_KEY，請先在 Apps Script 的指令碼屬性加入金鑰'); $(id).value = ''; $(id).click(); };
-  if ($('#snap')) { $('#snap').onclick = pick('#fileCam'); $('#album').onclick = pick('#fileAlb'); }
+  $('#snap').onclick = pick('#fileCam'); $('#album').onclick = pick('#fileAlb');
   $('#save').onclick = async () => {
+    if (photoBusy() && !confirm('還有照片在辨識中，現在儲存的話那幾張的品項不會加進來。要繼續嗎？')) return;
     const lines = draft.lines.filter(l => String(l.product).trim() && +l.qty > 0).map(l => ({product: String(l.product).trim(), qty: +l.qty}));
     if (!draft.customer.trim()) return alert('請填客戶');
     if (!lines.length) return alert('至少要有一個品項和數量');
@@ -461,76 +548,77 @@ function drawEditor(msg) {
       const d = await api({action:'saveOrder', order:{id: draft.id, date: draft.date, customer: draft.customer.trim(), note: draft.note, lines}});
       orders = orders.filter(x => x.id !== d.order.id); orders.push(d.order);
       orders.sort((a, b) => (b.date + b.created).localeCompare(a.date + a.created));
-      render();
-      if (jobs.length) nextJob(); else { curJob = null; closeDlg(); load().catch(() => {}); }
+      clearInterval(tick); draft.photos.forEach(p => p.gone = true);
+      closeDlg(); render(); load().catch(() => {});
     } catch (e) { alert('儲存失敗：' + e.message); $('#save').disabled = false; $('#save').textContent = '儲存'; }
   };
 }
+function photoState(ph, i) {
+  if (ph.st === 'wait') return `第 ${i + 1} 張・辨識中 ${Math.max(0, Math.round((Date.now() - ph.t0) / 1000))} 秒`;
+  if (ph.st === 'ok') return `第 ${i + 1} 張・✅ ${ph.n} 項`;
+  return `第 ${i + 1} 張・❌ 失敗 <button class="btn sm" data-retry="${i}" style="padding:1px 6px">重試</button>`;
+}
+function showBig(url) { const d = document.createElement('div'); d.className = 'big'; d.innerHTML = `<img src="${url}">`; d.onclick = () => d.remove(); document.body.appendChild(d); }
 
-/* ---------- 拍照 / 相簿辨識 ----------
- * 選好的照片會「同時」送去辨識，第一張辨識完就可以先核對；
- * 存好一張後自動跳下一張，後面的通常已經辨識好了。 */
-let jobs = [], curJob = null, tick = null;
-$('#fileCam').onchange = e => startJobs(e.target.files);
-$('#fileAlb').onchange = e => startJobs(e.target.files);
+/* ---------- 拍照 / 相簿辨識 ---------- */
+$('#fileCam').onchange = e => addPhotos(e.target.files);
+$('#fileAlb').onchange = e => addPhotos(e.target.files);
 
-function startJobs(fileList) {
+function addPhotos(fileList) {
   const files = [...fileList].filter(f => f.type.startsWith('image/') || /\.(heic|jpe?g|png)$/i.test(f.name));
-  if (!files.length) return;
-  if (files.length > 20 && !confirm(`一次選了 ${files.length} 張，辨識需要一點時間，要繼續嗎？`)) return;
-  const total = files.length;
-  jobs = files.map((file, i) => {
-    const j = {file, url: URL.createObjectURL(file), idx: i + 1, total, t0: Date.now()};
-    j.p = recognizeFile(j, Math.floor(i / 3) * 1500);    // 三張一批送出，避免超過免費額度的速率
-    return j;
+  if (!files.length || !draft) return;
+  if (files.length > 8 && !confirm(`一次選了 ${files.length} 張，這些都會合成「同一張」貨單。確定嗎？`)) return;
+  files.forEach((file, i) => {
+    const ph = {file, url: URL.createObjectURL(file), st: 'wait', n: 0};
+    draft.photos.push(ph);
+    recognize(ph, Math.floor(i / 3) * 1500);     // 三張一批送出，避免超過免費額度的速率
   });
-  nextJob();
+  clearInterval(tick);
+  tick = setInterval(() => {
+    if (!draft || $('#dlg').hidden) return clearInterval(tick);
+    draft.photos.forEach((ph, i) => { const el = document.querySelector(`[data-ps="${i}"]`); if (el && ph.st === 'wait') el.textContent = photoState(ph, i); });
+    if (!photoBusy()) clearInterval(tick);
+  }, 1000);
+  drawEditor();
 }
 
-function recognizeFile(j, wait) {
-  const p = (async () => {
+async function recognize(ph, wait) {
+  ph.st = 'wait'; ph.t0 = Date.now() + (wait || 0);
+  if (!$('#dlg').hidden && document.querySelector('.thumbs')) drawEditor();
+  try {
     if (wait) await new Promise(r => setTimeout(r, wait));
-    j.t0 = Date.now();
-    const b64 = await shrink(j.file, 1280);
-    return api({action: 'recognize', image: b64, mime: 'image/jpeg'});
-  })();
-  p.catch(() => {});
-  return p;
-}
-function nextJob() {
-  clearInterval(tick);
-  curJob = jobs.shift();
-  if (!curJob) return;
-  draft = {id: '', date: today(), customer: '', note: '', lines: [{product: '', qty: ''}], msg: '辨識中…'};
-  runJob(curJob);
-}
-function retryJob() {
-  const job = curJob; if (!job) return;
-  job.t0 = Date.now(); job.p = recognizeFile(job, 0);
-  draft.err = false; draft.msg = '辨識中…';
-  runJob(job);
-}
-function runJob(job) {
+    if (ph.gone) return;
+    ph.t0 = Date.now();
+    const b64 = await shrink(ph.file, 1280);
+    const r = await api({action: 'recognize', image: b64, mime: 'image/jpeg'});
+    if (ph.gone) return;
+    mergeResult(ph, r);
+    ph.st = 'ok';
+  } catch (err) {
+    if (ph.gone) return;
+    ph.st = 'err'; ph.err = err.message;
+  }
   drawEditor();
-  const show = () => { if (curJob === job && $('#snapMsg')) $('#snapMsg').textContent = `辨識中… ${Math.max(0, Math.round((Date.now() - job.t0) / 1000))} 秒`; };
-  show(); tick = setInterval(show, 1000);
-  job.p.then(r => {
-    if (curJob !== job) return;
-    clearInterval(tick);
-    if (r.customer) draft.customer = r.customer;
-    if (r.date) draft.date = r.date;
-    const got = r.items.map(i => ({product: i.product, qty: i.qty || '', raw: i.raw}));
-    draft.lines = got.concat([{product: '', qty: ''}]);
-    const miss = got.filter(l => !l.product).length;
-    draft.err = false;
-    draft.msg = `✅ 辨識到 ${got.length} 項（${Math.round((Date.now() - job.t0) / 1000)} 秒）${miss ? `，有 ${miss} 項對不到商品（黃色），請補上` : ''}。請對照照片核對後儲存`;
-    drawEditor();
-  }).catch(err => {
-    if (curJob !== job) return;
-    clearInterval(tick);
-    draft.msg = '❌ ' + err.message + '（可以按「重新辨識」，或對照照片手動輸入）'; draft.err = true;
-    drawEditor();
+}
+
+/** 把一張照片的辨識結果併進目前這張貨單 */
+function mergeResult(ph, r) {
+  const idx = draft.photos.indexOf(ph) + 1;
+  const cust = String(r.customer || '').trim();
+  if (cust) {
+    if (!draft.customer.trim()) draft.customer = cust;
+    else if (cust !== draft.customer.trim()) draft.warn = (draft.warn || '') + `第 ${idx} 張的客戶看起來是「${cust}」，跟這張單不同，請確認。`;
+  }
+  if (r.date && draft.autoDate) { draft.date = r.date; draft.autoDate = false; }
+  draft.lines = draft.lines.filter(l => String(l.product).trim() || String(l.qty).trim() || l.raw);
+  const items = r.items || [];
+  items.forEach(it => {
+    const same = it.product && draft.lines.find(l => l.product === it.product);
+    if (same) { same.qty = (+same.qty || 0) + (+it.qty || 0); same.raw = [same.raw, it.raw].filter(Boolean).join(' ＋ '); }
+    else draft.lines.push({product: it.product || '', qty: it.qty || '', raw: it.raw});
   });
+  draft.lines.push({product: '', qty: ''});
+  ph.n = items.length;
 }
 function shrink(file, max) {
   return new Promise((ok, bad) => {
